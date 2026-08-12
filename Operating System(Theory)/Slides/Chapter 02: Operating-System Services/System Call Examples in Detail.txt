@@ -1,0 +1,222 @@
+
+Standard File Descriptors
+Every Unix-like process starts with three standard file descriptors automatically opened by the shell: 
+0: stdin (standard input), typically the keyboard.
+1: stdout (standard output), typically the terminal or console.
+2: stderr (standard error), typically used for error messages and diagnostics to the terminal. 
+
+
+
+--------------------------------
+System Call Example-1
+--------------------------------
+
+/* 
+   System Call Demonstration Program
+   This program demonstrates three different system calls: open, close, and getpid
+   System calls are interfaces between user programs and the kernel
+*/
+
+// Include necessary header files
+#include <unistd.h>    // Provides access to POSIX operating system API (system call wrappers)
+#include <fcntl.h>     // Defines file control options (O_RDONLY, O_WRONLY, etc.)
+#include <stdio.h>     // Provides standard I/O functions (printf, perror)
+
+// Main function - program entry point
+int main() {
+    // --------------------------------------------------------------------
+    // OPEN SYSTEM CALL DEMONSTRATION
+    // --------------------------------------------------------------------
+    // open() is a wrapper function that invokes the actual system call
+    
+    // Attempt to open a file named "test.txt" in read-only mode
+
+    // Arguments:
+    //   1. "test.txt" - path to the file (passed to kernel for validation)
+    //   2. O_RDONLY - flag indicating read-only access mode
+    // Returns: file descriptor (an integer) or -1 on error
+    // File descriptor table management occurs in kernel space
+    int fd = open("test.txt", O_RDONLY);
+    
+    // Check if open() system call failed
+    // Negative return value indicates an error occurred
+    // The kernel sets errno with specific error code (ENOENT, EACCES, etc.)
+    if (fd < 0) {
+
+        // perror() uses errno set by the failed system call to print error message
+        perror("open failed");  // Output: "open failed: No such file or directory"
+        return 1;  // Exit with non-zero status to indicate failure to shell
+    }
+    
+    // --------------------------------------------------------------------
+    // CLOSE SYSTEM CALL DEMONSTRATION  
+    // --------------------------------------------------------------------
+    // close() releases the file descriptor for reuse
+    // Kernel performs cleanup: releases locks, updates file metadata if needed
+    
+    // Attempt to close the file descriptor obtained from open()
+    // Arguments: fd - the file descriptor integer to close
+    // Returns: 0 on success, -1 on error (e.g., EBADF for bad file descriptor)
+    // Note: Each process has a file descriptor table in kernel memory
+    if (close(fd) < 0) {
+        // Error handling for close failure (rare but possible)
+        perror("close failed");  // Could indicate kernel resource issue
+        return 1;  // Exit on failure
+    }
+    
+    // --------------------------------------------------------------------
+    // GETPID SYSTEM CALL DEMONSTRATION
+    // --------------------------------------------------------------------
+    // getpid() retrieves the current process ID from kernel process table
+    
+    // Call getpid() to obtain current process ID
+    // No arguments needed - kernel identifies calling process via current task_struct
+    // Returns: Process ID (positive integer) - always succeeds
+    // System call number for getpid is typically __NR_getpid
+    pid_t pid = getpid();  // pid_t is a typedef for integer type (usually int)
+    
+
+    // printf() is NOT a direct system call - it's a library function
+    // Internally buffers output and may call write() system call eventually
+    // Format string processing happens in user space for efficiency
+    printf("Process ID: %d\n", pid);
+    
+    // Return 0 to indicate successful execution to shell
+    // The exit() system call will be invoked implicitly by main() return
+    // Kernel performs process cleanup: closes open files, releases memory, etc.
+    return 0;
+}
+
+
+
+
+--------------------------------
+System Call Example-2
+--------------------------------
+
+
+// Include system call wrapper headers
+#include <unistd.h>  // POSIX API - provides read(), write(), close() system call wrappers
+#include <fcntl.h>   // File control options - defines O_RDONLY, O_WRONLY constants
+#include <stdio.h>   // Standard I/O - provides perror() for error reporting
+
+int main() {
+    // Allocate buffer in user-space memory (stack allocated, 1024 bytes)
+    char buffer[1024];  // This memory region will be passed to kernel for data transfer
+    
+    // OPEN system call - requests kernel to provide access to file
+    int fd = open("input.txt", O_RDONLY);  // Returns file descriptor (index into kernel's file table)
+    
+    // Error check: negative return indicates kernel denied access
+    if (fd < 0) {  // Common errors: ENOENT (file doesn't exist), EACCES (permission denied)
+        perror("open failed");  // Reads kernel-set errno, prints descriptive message
+        return 1;  // Exit with error code (non-zero signals failure to shell)
+    }
+    
+    // READ system call - requests kernel to copy data from file to user buffer
+    // Arguments: fd (which file), buffer (where in user memory), size (how much)
+    ssize_t bytes_read = read(fd, buffer, sizeof(buffer));  // Returns bytes read, 0 for EOF, -1 for error
+    
+    // Error check: kernel returns -1 on read failure
+    if (bytes_read < 0) {  // Common errors: EBADF (invalid fd), EIO (I/O error)
+        perror("read failed");  // Reports kernel's error code in human-readable form
+        close(fd);  // Always release kernel resources before exiting
+        return 1;   // Propagate error to calling process (usually shell)
+    }
+    
+    // WRITE system call - requests kernel to copy data from user buffer to device/file
+    // Arguments: STDOUT_FILENO (descriptor 1), buffer (source data), bytes_read (amount)
+    ssize_t bytes_written = write(STDOUT_FILENO, buffer, bytes_read);  // Returns bytes written or -1
+    
+    // Error check: write can fail even if read succeeded
+    if (bytes_written < 0) {  // Common errors: EPIPE (broken pipe), ENOSPC (disk full)
+        perror("write failed");  // Kernel sets errno indicating specific failure
+        close(fd);  // Clean up file descriptor before exit
+        return 1;   // Signal failure to parent process
+    }
+    
+    // CLOSE system call - tells kernel to release file descriptor resource
+    close(fd);  // Returns 0/-1, but we ignore here (rare to fail after successful operations)
+    
+    // Exit syscall invoked implicitly - returns 0 (success) to kernel
+    return 0;  // Kernel propagates exit status to parent process via wait() system call
+}
+
+
+File Descriptor Flow:
+open()  → Kernel allocates fd → points to file object
+            ↓
+read()  → Kernel copies file data → user buffer
+            ↓
+write() → Kernel copies user buffer → stdout device
+            ↓
+close() → Kernel deallocates fd, updates file metadata
+
+
+
+
+
+
+
+
+--------------------------------
+System Call Example-3
+--------------------------------
+//SAT -- read time stamp
+//UTIMENSTAT = Modify Time Stamp
+//inode --> atime, mtime, ctime, acces time , modify time, Change Time
+
+
+
+// Include headers for system call wrappers and related functions
+#include <sys/stat.h>  // Provides stat structure and stat() system call wrapper
+#include <time.h>      // Provides time functions and timespec structure
+#include <stdio.h>     // Provides standard I/O functions like printf()
+
+int main() {
+    // Allocate stat structure in user-space memory
+    // This will be passed to kernel to be filled with file metadata
+    struct stat file_info;  // Typically 144+ bytes containing inode info, timestamps, permissions
+    
+    // STAT system call - requests kernel to retrieve file metadata without opening file
+    // Arguments: "test.txt" (file path), &file_info (pointer to user buffer for metadata)
+    // Returns: 0 on success, -1 on error (file doesn't exist, permission denied, etc.)
+    // Kernel populates stat structure from inode data in filesystem
+    if (stat("test.txt", &file_info) < 0) {  // Uses kernel's VFS (Virtual File System) layer
+        perror("stat failed");  // Reports kernel error (ENOENT, EACCES, etc.)
+        return 1;  // Exit with error code
+    }
+    
+    // Access file metadata returned by kernel in stat structure
+    // st_size: File size in bytes (from inode)
+    // st_mtime: Last modification timestamp (64-bit time_t)
+    printf("File size: %ld bytes\n", file_info.st_size);  // Kernel provides this from inode
+    printf("Last modified: %s", ctime(&file_info.st_mtime));  // Convert kernel timestamp to string
+    
+    // Prepare data for UTIMENSAT system call - setting file timestamps
+    // timespec structure used for nanosecond precision timestamps
+    struct timespec times[2];  // Array of 2 timespec: [0]=access time, [1]=modification time
+    
+    // Set access time (atime) to current time
+    // time(NULL) returns seconds since epoch (kernel's system time)
+    // tv_nsec set to 0 (nanoseconds) - UTIME_NOW would be alternative for "now"
+    times[0].tv_sec = time(NULL);  // Current time in seconds
+    times[0].tv_nsec = 0;           // No nanosecond component
+    
+    // Set modification time (mtime) to current time
+    // Same timestamp for both atime and mtime updates both simultaneously
+    times[1].tv_sec = time(NULL);  // Same current time for modification timestamp
+    times[1].tv_nsec = 0;           // No nanosecond precision needed
+    
+    // UTIMENSAT system call - update file timestamps with nanosecond precision
+    // Arguments: AT_FDCWD (use current working directory), "test.txt" (path), times (new timestamps), 0 (flags)
+    // Returns: 0 on success, -1 on error (permission denied, file doesn't exist, etc.)
+    // Kernel updates inode timestamps on disk (async write to filesystem)
+    if (utimensat(AT_FDCWD, "test.txt", times, 0) < 0) {  // More modern than utime()/utimes()
+        perror("utimensat failed");  // Common errors: EACCES (write permission denied), ENOENT (no file)
+        return 1;  // Exit on failure
+    }
+    
+    // Return success (implicit exit() system call will be invoked)
+    return 0;  // Kernel cleans up process resources
+}

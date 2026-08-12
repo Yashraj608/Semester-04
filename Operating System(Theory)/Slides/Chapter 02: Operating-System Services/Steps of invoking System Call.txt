@@ -1,0 +1,52 @@
++-------------------+    1. User program calls printf()
+|   User Program    |        printf("Hello, world!\n");
++-------------------+
+          |
+          v
++-------------------+    2. printf in libc formats the string and
+|   C Library (libc)|       calls write(1, "Hello, world!\n", 14);
+|   (printf)        |
++-------------------+
+          |
+          v
++-------------------+    3. write wrapper in libc:
+|   C Library (libc)|       - moves syscall number (1 for write on x86-64?) 
+|   (write)         |         into rax (note: the actual number might vary)
+|                   |       - moves fd (1) into rdi, buffer into rsi, count into rdx
+|                   |       - executes syscall instruction
++-------------------+
+          |
+          v
++-------------------+    4. CPU switches to kernel mode and jumps to system call handler
+|   Kernel: System  |
+|   Call Handler    |
++-------------------+
+          |
+          v
++-------------------+    5. System call handler calls the actual kernel function
+|   Kernel: sys_write|
+|   (or equivalent)  |
++-------------------+
+          |
+          v
++-------------------+    6. sys_write performs the write operation (e.g., to terminal)
+|   Device Driver   |
+|   (e.g., tty)     |
++-------------------+
+          |
+          v
++-------------------+    7. Return path: sys_write returns to system call handler,
+|   Kernel: System  |       which then returns to user mode via sysret/iret
+|   Call Handler    |
++-------------------+
+          |
+          v
++-------------------+    8. Back in user mode, the write wrapper returns to printf,
+|   C Library (libc)|       and printf returns to the user program.
+|   (write returns) |
++-------------------+
+          |
+          v
++-------------------+
+|   User Program    |
++-------------------+
